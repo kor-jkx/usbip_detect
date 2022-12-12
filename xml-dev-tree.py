@@ -1,4 +1,6 @@
 from ctypes import *
+from xml.dom.minidom import *
+import time
 
 cfg = windll.cfgmgr32
 
@@ -70,99 +72,89 @@ CM_DRP_DEVICEDESC = 1
 CM_DRP_DRIVER = 0x0000A
 NULL = 0
 
-
-def get_dev_desc(devInst):
-    buf = (c_wchar * 1024)()
-    blen = c_int(1024)
-    cr = cfg.CM_Get_DevNode_Registry_PropertyW(devInst, CM_DRP_DEVICEDESC, NULL, buf, byref(blen), 0)
-    if cr == 0:
-        return buf.value
-    else:
-        return "ERR(%d):%s" % (devInst, RERVALS[cr])
-
-
-def get_dev_id(devInst):
-    buf = (c_wchar * 1024)()
-    blen = c_int(1024)
-    cr = cfg.CM_Get_Device_IDW(devInst, buf, byref(blen), 0)
-    if cr == 0:
-        return buf.value
-    else:
-        return "ERR(%d):%s" % (devInst, RERVALS[cr])
-
-
 drivers = []
 
 
-def get_dev_driver(devInst):
+def get_dev_desc(dev_inst):
+    buf = (c_wchar * 1024)()
+    blen = c_int(1024)
+    cr = cfg.CM_Get_DevNode_Registry_PropertyW(dev_inst, CM_DRP_DEVICEDESC, NULL, buf, byref(blen), 0)
+    return buf.value if cr == 0 else "ERR(%d):%s" % (dev_inst, RERVALS[cr])
+
+
+def get_dev_id(dev_inst):
+    buf = (c_wchar * 1024)()
+    blen = c_int(1024)
+    cr = cfg.CM_Get_Device_IDW(dev_inst, buf, byref(blen), 0)
+    return buf.value if cr == 0 else "ERR(%d):%s" % (dev_inst, RERVALS[cr])
+
+
+def get_dev_driver(dev_inst):
     global drivers
     buf = (c_wchar * 1024)()
     blen = c_int(1024)
-    cr = cfg.CM_Get_DevNode_Registry_PropertyW(devInst, CM_DRP_DRIVER, NULL, buf, byref(blen), 0);
+    cr = cfg.CM_Get_DevNode_Registry_PropertyW(dev_inst, CM_DRP_DRIVER, NULL, buf, byref(blen), 0)
     if cr == 0:
         drivers.append(buf.value)
         return buf.value
     else:
-        return "ERR(%d):%s" % (devInst, RERVALS[cr])
-
-
-from xml.dom.minidom import *
+        return "ERR(%d):%s" % (dev_inst, RERVALS[cr])
 
 
 def dev_xml():
-    def dev_child(devInst, tree, lev, dom):
-        devParent = c_int(devInst)
-        devChild = c_int(0)
-        devNextChild = c_int(0)
-        if cfg.CM_Get_Child(byref(devChild), devParent, 0) == 0:
-            desc = get_dev_desc(devChild.value)
-            devId = get_dev_id(devChild.value)
-            driver = get_dev_driver(devChild.value)
-            node = dom.createElement("Device")
-            node.setAttribute("DevInst", str(devChild.value))
+    def dev_child(dev_inst_in, tree, level, _dom):
+        dev_parent = c_int(dev_inst_in)
+        dev_child = c_int(0)
+        dev_next_child = c_int(0)
+        if cfg.CM_Get_Child(byref(dev_child), dev_parent, 0) == 0:
+            desc = get_dev_desc(dev_child.value)
+            dev_id = get_dev_id(dev_child.value)
+            driver = get_dev_driver(dev_child.value)
+            node = _dom.createElement("Device")
+            node.setAttribute("DevInst", str(dev_child.value))
             node.setAttribute("Desc", desc)
-            node.setAttribute("Lev", str(lev))
-            node.setAttribute("DevId", devId)
+            node.setAttribute("Lev", str(level))
+            node.setAttribute("DevId", dev_id)
             node.setAttribute("Driver", driver)
             tree.appendChild(node)
-            dev_child(devChild.value, node, lev + 1, dom)
-            while cfg.CM_Get_Sibling(byref(devNextChild), devChild, 0) == 0:
-                devChild.value = devNextChild.value
-                desc = get_dev_desc(devChild.value)
-                devId = get_dev_id(devChild.value)
-                driver = get_dev_driver(devChild.value)
-                node = dom.createElement("Device")
-                node.setAttribute("DevInst", str(devChild.value))
+            dev_child(dev_child.value, node, level + 1, _dom)
+            while cfg.CM_Get_Sibling(byref(dev_next_child), dev_child, 0) == 0:
+                dev_child.value = dev_next_child.value
+                desc = get_dev_desc(dev_child.value)
+                dev_id = get_dev_id(dev_child.value)
+                driver = get_dev_driver(dev_child.value)
+                node = _dom.createElement("Device")
+                node.setAttribute("DevInst", str(dev_child.value))
                 node.setAttribute("Desc", desc)
-                node.setAttribute("Lev", str(lev))
-                node.setAttribute("DevId", devId)
+                node.setAttribute("Lev", str(level))
+                node.setAttribute("DevId", dev_id)
                 node.setAttribute("Driver", driver)
                 tree.appendChild(node)
-                dev_child(devChild.value, node, lev + 1, dom)
+                dev_child(dev_child.value, node, level + 1, _dom)
 
     dom = Document()
     dom.appendChild(dom.createElement("DeviceTree"))
-    devInst = c_int(0)
-    devInstNext = c_int(0)
+    dev_inst = c_int(0)
+    dev_inst_next = c_int(0)
     lev = 0
-    if 0 == cfg.CM_Locate_DevNodeW(byref(devInst), 0, 0):
-        desc = get_dev_desc(devInst.value)
-        devId = get_dev_id(devInst.value)
-        driver = get_dev_driver(devInst.value)
+    if 0 == cfg.CM_Locate_DevNodeW(byref(dev_inst), 0, 0):
+        desc = get_dev_desc(dev_inst.value)
+        devId = get_dev_id(dev_inst.value)
+        driver = get_dev_driver(dev_inst.value)
         node = dom.createElement("Device")
-        node.setAttribute("DevInst", str(devInst.value))
+        node.setAttribute("DevInst", str(dev_inst.value))
         node.setAttribute("Desc", desc)
         node.setAttribute("Lev", str(lev))
         node.setAttribute("DevId", devId)
         node.setAttribute("Driver", driver)
         dom.documentElement.appendChild(node)
-        while 0 == cfg.CM_Get_Sibling(byref(devInstNext), devInst, 0):
-            devInst.value = devInstNext.value
-            desc = get_dev_desc(devInst.value)
-            devId = get_dev_id(devInst.value)
-            driver = get_dev_driver(devInst.value)
+        while 0 == cfg.CM_Get_Sibling(byref(dev_inst_next), dev_inst, 0):
+            dev_inst.value = dev_inst_next.value
+            desc = get_dev_desc(dev_inst.value)
+            devId = get_dev_id(dev_inst.value)
+            driver = get_dev_driver(dev_inst.value)
             node = dom.createElement("Device")
-            node.setAttribute("DevInst", str(devInst.value))
+            node.setAttribute("DevInst", str(dev_inst.value))
             node.setAttribute("Desc", desc)
             node.setAttribute("Lev", str(lev))
             node.setAttribute("DevId", devId)
@@ -174,11 +166,8 @@ def dev_xml():
     return dom.toprettyxml()
 
 
-import time
-
 st = time.time()
 xml = dev_xml()
 et = time.time()
 print("use time:", et - st)
 open("c:\\Users\\pdm\\DeviceTree.xml", "wb").write(xml.encode("utf8"))
-# print(xml)
